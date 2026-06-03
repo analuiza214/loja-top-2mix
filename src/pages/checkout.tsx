@@ -179,21 +179,17 @@ export default function Checkout() {
     localStorage.setItem("topmix_buyer", JSON.stringify(buyer));
     localStorage.setItem("topmix_address_loja", JSON.stringify(address));
 
-    // Salva o contato do cliente para recuperação posterior
-    try {
-      await supabase.from("leads").insert({
-        nome: buyer.nome,
-        email: buyer.email,
-        telefone: buyer.telefone,
-        cpf: buyer.cpf || null,
-        produtos: items.map(i => `${i.name} (x${i.quantity})`).join(", "),
-        valor: (paymentMethod === "pix" ? pixTotal : total).toFixed(2),
-        metodo_pagamento: paymentMethod,
-        status: paymentMethod === "pix" ? "pix_gerado" : "checkout_iniciado",
-      });
-    } catch {
-      // silently ignore — não bloqueia o checkout
-    }
+    const { error: leadError } = await supabase.from("leads").insert({
+  nome: buyer.nome,
+  email: buyer.email,
+  telefone: buyer.telefone,
+  cpf: buyer.cpf || null,
+  produtos: items.map(i => `${i.name} (x${i.quantity})`).join(", "),
+  valor: parseFloat((paymentMethod === "pix" ? pixTotal : total).toFixed(2)),
+  metodo_pagamento: paymentMethod,
+  status: paymentMethod === "pix" ? "pix_gerado" : "checkout_iniciado",
+});
+if (leadError) console.error("Supabase insert error:", leadError);
 
     const finalAmount = paymentMethod === "pix" ? pixTotal : total;
     const cepRaw = address.cep.replace(/\D/g, "");
