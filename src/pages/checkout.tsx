@@ -12,29 +12,6 @@ import {
   ChevronDown, ChevronUp, Truck, Check, User, AlertCircle,
 } from "lucide-react";
 
-function formatCpf(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 11);
-  if (d.length <= 3) return d;
-  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
-  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
-
-function validarCpf(cpf: string): boolean {
-  const d = cpf.replace(/\D/g, "");
-  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += parseInt(d[i]) * (10 - i);
-  let r = (sum * 10) % 11;
-  if (r === 10 || r === 11) r = 0;
-  if (r !== parseInt(d[9])) return false;
-  sum = 0;
-  for (let i = 0; i < 10; i++) sum += parseInt(d[i]) * (11 - i);
-  r = (sum * 10) % 11;
-  if (r === 10 || r === 11) r = 0;
-  return r === parseInt(d[10]);
-}
-
 function formatPhone(v: string) {
   const d = v.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 2) return d.length ? `(${d}` : "";
@@ -73,7 +50,7 @@ export default function Checkout() {
   });
 
   const [buyer, setBuyer] = useState({
-    nome: "", email: "", telefone: "", cpf: ""
+    nome: "", email: "", telefone: ""
   });
 
   const [card, setCard] = useState({
@@ -148,7 +125,6 @@ export default function Checkout() {
     if (!buyer.nome.trim()) errors.nome = "Obrigatório";
     if (!buyer.email.trim() || !buyer.email.includes("@")) errors.email = "E-mail inválido";
     if (buyer.telefone.replace(/\D/g, "").length < 10) errors.telefone = "Telefone inválido";
-    if (!validarCpf(buyer.cpf)) errors.cpf = "CPF inválido";
 
     const cepDigits = address.cep.replace(/\D/g, "");
     if (cepDigits.length !== 8) errors.cep = "CEP inválido — informe os 8 dígitos";
@@ -183,7 +159,6 @@ export default function Checkout() {
   nome: buyer.nome,
   email: buyer.email,
   telefone: buyer.telefone,
-  cpf: buyer.cpf || null,
   produtos: items.map(i => `${i.name} (x${i.quantity})`).join(", "),
   valor: parseFloat((paymentMethod === "pix" ? pixTotal : total).toFixed(2)),
   metodo_pagamento: paymentMethod,
@@ -198,7 +173,6 @@ if (leadError) console.error("Supabase insert error:", leadError);
       name: buyer.nome,
       email: buyer.email,
       phone: buyer.telefone,
-      document: buyer.cpf,
       address: {
         zipCode: cepRaw,
         state: address.estado,
@@ -395,25 +369,14 @@ if (leadError) console.error("Supabase insert error:", leadError);
                   {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="telefone" className="text-xs font-semibold text-gray-700">Telefone *</Label>
-                    <Input
-                      id="telefone" placeholder="(11) 99999-9999" value={buyer.telefone}
-                      onChange={e => setBuyer(b => ({ ...b, telefone: formatPhone(e.target.value) }))}
-                      className={`h-11 text-sm ${formErrors.telefone ? "border-red-400" : ""}`}
-                    />
-                    {formErrors.telefone && <p className="text-xs text-red-500">{formErrors.telefone}</p>}
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="cpf" className="text-xs font-semibold text-gray-700">CPF *</Label>
-                    <Input
-                      id="cpf" placeholder="000.000.000-00" value={buyer.cpf}
-                      onChange={e => setBuyer(b => ({ ...b, cpf: formatCpf(e.target.value) }))}
-                      className={`h-11 text-sm ${formErrors.cpf ? "border-red-400" : ""}`}
-                    />
-                    {formErrors.cpf && <p className="text-xs text-red-500">{formErrors.cpf}</p>}
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="telefone" className="text-xs font-semibold text-gray-700">Telefone *</Label>
+                  <Input
+                    id="telefone" placeholder="(11) 99999-9999" value={buyer.telefone}
+                    onChange={e => setBuyer(b => ({ ...b, telefone: formatPhone(e.target.value) }))}
+                    className={`h-11 text-sm ${formErrors.telefone ? "border-red-400" : ""}`}
+                  />
+                  {formErrors.telefone && <p className="text-xs text-red-500">{formErrors.telefone}</p>}
                 </div>
               </div>
             </div>
