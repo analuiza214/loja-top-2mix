@@ -13,11 +13,26 @@
     <meta name="twitter:title" content="TopMix Brasil — Figurinhas Copa 2026" />
     <meta name="twitter:description" content="Kits de álbum e figurinhas da Copa do Mundo 2026. Produto 100% original Panini." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- DNS prefetch para domínios externos -->
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="dns-prefetch" href="https://fast.wistia.com" />
+    <link rel="dns-prefetch" href="https://i.pravatar.cc" />
+    <link rel="dns-prefetch" href="https://cdn.utmify.com.br" />
+    <link rel="dns-prefetch" href="https://connect.facebook.net" />
+
+    <!-- Preconnect para recursos críticos -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://fast.wistia.com" crossorigin />
-    <link rel="preconnect" href="https://i.pravatar.cc" crossorigin />
+
+    <!-- Preload da imagem hero (LCP) -->
+    <link rel="preload" as="image" href="/images/hero-kit.webp" fetchpriority="high" />
+
+    <!-- Google Fonts com display=swap -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@700;800;900&display=swap" rel="stylesheet" />
+
+    <!-- Wistia player carregado de forma assíncrona -->
     <script src="https://fast.wistia.com/player.js" async></script>
 
     <!-- UTMify — Rastreamento de UTMs -->
@@ -38,6 +53,34 @@
       a.setAttribute("src", "https://cdn.utmify.com.br/scripts/pixel/pixel.js");
       document.head.appendChild(a);
     </script>
+
+    <!-- Facebook Pixel -->
+    <script>
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1013829117803178');
+      fbq('track', 'PageView');
+
+      // Salva fbclid no sessionStorage para o checkout capturar
+      (function() {
+        var params = new URLSearchParams(window.location.search);
+        var fbclid = params.get('fbclid');
+        if (fbclid) {
+          sessionStorage.setItem('fbclid', fbclid);
+        }
+      })();
+    </script>
+    <noscript>
+      <img height="1" width="1" style="display:none"
+        src="https://www.facebook.com/tr?id=1013829117803178&ev=PageView&noscript=1"/>
+    </noscript>
+    <!-- Fim Facebook Pixel -->
   </head>
   <body>
     <div id="root"></div>

